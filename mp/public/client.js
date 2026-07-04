@@ -19,6 +19,23 @@ function wsUrl(){
   return proto + '://' + location.host;
 }
 
+function fmtTime(sec){
+  const m = Math.floor(sec/60), s = sec%60;
+  return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+}
+function perfSig(st){
+  if(!st || st.screen!=='performance') return null;
+  return JSON.stringify(st.messages)+'|'+st.canSubmit+'|'+st.canJudge+'|'+st.target+'|'+st.challengeText;
+}
+let lastPerfSig = null;
+function patchPerformanceTimer(){
+  const st = serverState;
+  const t = document.getElementById('timerDisp');
+  if(t){ t.textContent = fmtTime(st.timeLeft); t.className = 'timer-display'+(st.timeLeft<=10?' low':''); }
+  const cc = document.getElementById('correctCountDisp');
+  if(cc){ cc.textContent = st.correctCount; }
+}
+
 function connect(onOpen){
   connStatus = 'connecting';
   ws = new WebSocket(wsUrl());
@@ -30,6 +47,7 @@ function connect(onOpen){
       // nada especial aqui, o estado completo vem em 'state'
     } else if(msg.type === 'error'){
       showToast(msg.message);
+      return;
     } else if(msg.type === 'state'){
       serverState = msg.payload;
       if(serverState.you){
@@ -37,7 +55,14 @@ function connect(onOpen){
           code: serverState.code, duplaIdx: serverState.you.duplaIdx, playerIdx: serverState.you.playerIdx
         }));
       }
-      render();
+      const sig = perfSig(serverState);
+      if(sig!==null && sig===lastPerfSig && document.getElementById('timerDisp')){
+        // so o cronometro avancou (tick de 1s) — atualiza sem tocar no campo de resposta
+        lastPerfSig = sig;
+        patchPerformanceTimer();
+        return;
+      }
+      lastPerfSig = sig;
     }
     render();
   };
@@ -139,6 +164,16 @@ function leaveRoom(){
 /* ============ RENDER ============ */
 function render(){
   const app = document.getElementById('app');
+
+  // preserva o que esta sendo digitado no chat: como cada mensagem do servidor
+  // (inclusive o "tick" do cronometro, uma vez por segundo) reconstroi a tela
+  // inteira, sem isso o campo de resposta seria recriado vazio a cada segundo.
+  let preservedChat = null;
+  const existingInput = document.getElementById('chatInput');
+  if(existingInput && document.activeElement === existingInput){
+    preservedChat = { value: existingInput.value, start: existingInput.selectionStart, end: existingInput.selectionEnd };
+  }
+
   let html = '<div class="brand"><h1>EU DUVIDO</h1><span class="dot">?</span></div>';
 
   if(toastMsg){ html += '<div class="toast">'+escapeHtml(toastMsg)+'</div>'; }
@@ -173,6 +208,14 @@ function render(){
   if(serverState.screen==='performance'){
     const box = document.getElementById('chatBox');
     if(box) box.scrollTop = box.scrollHeight;
+    if(preservedChat){
+      const inp = document.getElementById('chatInput');
+      if(inp){
+        inp.value = preservedChat.value;
+        inp.focus();
+        try{ inp.setSelectionRange(preservedChat.start, preservedChat.end); } catch(e){}
+      }
+    }
   }
 }
 
@@ -325,18 +368,14 @@ function renderBidding(){
   return s;
 }
 
-function fmtTime(sec){
-  const m = Math.floor(sec/60), s = sec%60;
-  return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
-}
 function renderPerformance(){
   const st = serverState;
   let s = '<div class="card"><p class="eyebrow">Rodada em andamento</p>';
   s += '<div class="diff-tag diff-'+st.difficulty+'">Dificuldade: '+(st.difficulty==='baixo'?'Baixa':'Média')+'</div>';
   s += '<div class="challenge-text">'+escapeHtml(st.challengeText)+'</div>';
   s += '<p class="hint" style="text-align:center;">Respondente: <strong>'+escapeHtml(st.respondenteName)+'</strong></p>';
-  s += '<div class="timer-display'+(st.timeLeft<=10?' low':'')+'">'+fmtTime(st.timeLeft)+'</div>';
-  s += '<div class="target-strip"><div class="t"><div class="v">'+st.correctCount+'</div><div class="l">Acertos</div></div><div class="t"><div class="v">'+st.target+'</div><div class="l">Meta</div></div></div>';
+  s += '<div id="timerDisp" class="timer-display'+(st.timeLeft<=10?' low':'')+'">'+fmtTime(st.timeLeft)+'</div>';
+  s += '<div class="target-strip"><div class="t"><div class="v" id="correctCountDisp">'+st.correctCount+'</div><div class="l">Acertos</div></div><div class="t"><div class="v">'+st.target+'</div><div class="l">Meta</div></div></div>';
   s += '<div class="chat-box" id="chatBox">';
   st.messages.forEach((m,idx)=>{
     s += '<div class="msg '+m.status+'">';
