@@ -11,12 +11,12 @@ function makeRoom(code, numDuplas, duration, totalRounds){
     numDuplas: numDuplas===3?3:2,
     duration: [60,90,120].includes(duration)?duration:90,
     totalRounds: totalRounds===9?9:5,
-    duplas: [0,1,2].map(()=>({ name:'', players:[{name:'',connected:false},{name:'',connected:false}], score:0, timesActive:0 })),
+    duplas: [0,1,2].map(()=>({ name:'', players:[{name:'',connected:false},{name:'',connected:false}], score:0 })),
     createdAt: Date.now(),
     pool:null, usedIds:new Set(),
     roundNum:0,
     activeIdx:0, opponentIdx:1, refereeIdx:-1,
-    apostadorIdx:0, respondenteIdx:1,
+    apostadorIdx:0, respondenteIdx:1, designatedIdx:0,
     challenge:null,
     revealQueue:[], revealStep:0, revealShown:false,
     prediction:null,
@@ -73,7 +73,7 @@ function startGame(room, seat){
   if(!seatsFilled(room)) return {ok:false, error:'Ainda faltam jogadores para ocupar os assentos.'};
   room.pool = buildPool();
   room.usedIds = new Set();
-  for(let i=0;i<3;i++){ room.duplas[i].score = 0; room.duplas[i].timesActive = 0; }
+  for(let i=0;i<3;i++){ room.duplas[i].score = 0; }
   room.roundNum = 0;
   nextRound(room);
   return {ok:true};
@@ -95,10 +95,10 @@ function nextRound(room){
     room.opponentIdx = (room.activeIdx+1)%3;
     room.refereeIdx = (room.activeIdx+2)%3;
   }
-  const activeDupla = room.duplas[room.activeIdx];
-  room.apostadorIdx = activeDupla.timesActive % 2;
-  room.respondenteIdx = 1-room.apostadorIdx;
-  activeDupla.timesActive += 1;
+  const designatedIdx = (r-1) % 2;
+  room.designatedIdx = designatedIdx;
+  room.apostadorIdx = designatedIdx;
+  room.respondenteIdx = 1-designatedIdx;
 
   const neededDifficulty = (r%2===1) ? 'baixo' : 'medio';
   let candidates = room.pool.filter(c=>!room.usedIds.has(c.id) && c.difficulty===neededDifficulty);
@@ -109,8 +109,8 @@ function nextRound(room){
   room.challenge = challenge;
 
   room.revealQueue = [
-    {duplaIdx: room.activeIdx, playerIdx: room.apostadorIdx},
-    {duplaIdx: room.opponentIdx, playerIdx: null}
+    {duplaIdx: room.activeIdx, playerIdx: designatedIdx},
+    {duplaIdx: room.opponentIdx, playerIdx: designatedIdx}
   ];
   room.revealStep = 0;
   room.revealShown = false;
@@ -168,7 +168,7 @@ function turnDuplaIdx(room){
 function raiseBid(room, seat, number){
   if(room.screen!=='bidding') return {ok:false, error:'Fora da fase de disputa.'};
   const td = turnDuplaIdx(room);
-  if(seat.duplaIdx!==td) return {ok:false, error:'Nao e a vez da sua dupla.'};
+  if(seat.duplaIdx!==td || seat.playerIdx!==room.designatedIdx) return {ok:false, error:'Nao e a sua vez.'};
   const n = parseInt(number,10);
   if(!(n>room.bidCurrent && n<=20)) return {ok:false, error:'O numero precisa ser maior que o atual (ate 20).'};
   room.bidCurrent = n;
@@ -179,7 +179,7 @@ function raiseBid(room, seat, number){
 function callDoubt(room, seat){
   if(room.screen!=='bidding') return {ok:false, error:'Fora da fase de disputa.'};
   const td = turnDuplaIdx(room);
-  if(seat.duplaIdx!==td) return {ok:false, error:'Nao e a vez da sua dupla.'};
+  if(seat.duplaIdx!==td || seat.playerIdx!==room.designatedIdx) return {ok:false, error:'Nao e a sua vez.'};
   room.doubterIdx = td;
   room.target = room.bidCurrent;
   startPerformance(room);
@@ -270,7 +270,7 @@ function goNextRound(room){
 function restartGame(room){
   room.pool = null; room.usedIds = new Set();
   room.roundNum = 0;
-  for(let i=0;i<3;i++){ room.duplas[i].score=0; room.duplas[i].timesActive=0; }
+  for(let i=0;i<3;i++){ room.duplas[i].score=0; }
   room.screen = 'lobby';
   room.challenge = null; room.messages = []; room.correctCount = 0;
   room.lastRoundSummary = null;
@@ -331,7 +331,8 @@ function buildClientView(room, seat){
     base.bidCurrent = room.bidCurrent;
     base.bidLog = room.bidLog[room.bidLog.length-1];
     base.turnName = duplaName(room, td);
-    base.canAct = seat.duplaIdx===td;
+    base.turnPlayerName = playerName(room, td, room.designatedIdx);
+    base.canAct = (seat.duplaIdx===td && seat.playerIdx===room.designatedIdx);
     return base;
   }
   if(room.screen==='performance'){

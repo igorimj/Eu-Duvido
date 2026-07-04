@@ -280,13 +280,17 @@ function renderPredict(){
   if(st.canPredict){
     s += '<h2 class="section-title">Quantos acertos o seu parceiro vai ter?</h2>';
     s += '<p class="hint">Escolha um número de 1 a 20.</p>';
-    s += '<div class="challenge-hidden">🔒 Desafio secreto ('+(st.difficulty==='baixo'?'dificuldade baixa':'dificuldade média')+')</div>';
-    s += '<div class="num-grid">';
-    for(let n=1;n<=20;n++){ s += '<div class="num-btn" onclick="doChoosePrediction('+n+')">'+n+'</div>'; }
-    s += '</div>';
   } else {
-    s += '<div class="waiting-box"><div class="spin">Aguardando aposta de '+escapeHtml(st.apostadorName)+'…</div></div>';
+    s += '<h2 class="section-title">Aguardando aposta de '+escapeHtml(st.apostadorName)+'</h2>';
+    s += '<p class="hint">Você pode acompanhar, mas só '+escapeHtml(st.apostadorName)+' escolhe o número.</p>';
   }
+  s += '<div class="challenge-hidden">🔒 Desafio secreto ('+(st.difficulty==='baixo'?'dificuldade baixa':'dificuldade média')+')</div>';
+  s += '<div class="num-grid">';
+  for(let n=1;n<=20;n++){
+    if(st.canPredict){ s += '<div class="num-btn" onclick="doChoosePrediction('+n+')">'+n+'</div>'; }
+    else { s += '<div class="num-btn disabled">'+n+'</div>'; }
+  }
+  s += '</div>';
   s += '</div>';
   return s;
 }
@@ -294,26 +298,28 @@ function renderPredict(){
 function renderBidding(){
   const st = serverState;
   let s = '<div class="card"><p class="eyebrow">Disputa</p>';
-  s += '<div class="turn-banner">Vez de <strong>'+escapeHtml(st.turnName)+'</strong></div>';
+  s += '<div class="turn-banner">Vez de <strong>'+escapeHtml(st.turnPlayerName)+'</strong> ('+escapeHtml(st.turnName)+')</div>';
   s += '<div class="bid-label">Número atual em jogo</div>';
   s += '<div class="bid-current">'+st.bidCurrent+'</div>';
   s += '<div class="bid-meter"><div class="bid-meter-fill" style="width:'+(st.bidCurrent/20*100)+'%"></div></div>';
   s += '<div class="bid-log">'+escapeHtml(st.bidLog||'')+'</div>';
   if(st.canAct){
     s += '<p class="hint" style="text-align:center;">Aumente o número ou aperte "Eu Duvido".</p>';
-    if(st.bidCurrent<20){
-      s += '<div class="num-grid">';
-      for(let n=1;n<=20;n++){
-        const disabled = n<=st.bidCurrent;
-        s += '<div class="num-btn'+(disabled?' disabled':'')+'" '+(disabled?'':'onclick="doRaiseBid('+n+')"')+'>'+n+'</div>';
-      }
-      s += '</div>';
-    } else {
-      s += '<p class="hint" style="text-align:center;">O número máximo (20) já foi atingido. Só resta duvidar!</p>';
-    }
-    s += '<button class="btn btn-doubt" onclick="doCallDoubt()">🔥 Eu Duvido!</button>';
   } else {
-    s += '<div class="waiting-box"><div class="spin">Aguardando '+escapeHtml(st.turnName)+'…</div></div>';
+    s += '<p class="hint" style="text-align:center;">Só '+escapeHtml(st.turnPlayerName)+' pode agir agora. Acompanhe por aqui.</p>';
+  }
+  if(st.bidCurrent<20){
+    s += '<div class="num-grid">';
+    for(let n=1;n<=20;n++){
+      const disabled = n<=st.bidCurrent || !st.canAct;
+      s += '<div class="num-btn'+(disabled?' disabled':'')+'" '+(disabled?'':'onclick="doRaiseBid('+n+')"')+'>'+n+'</div>';
+    }
+    s += '</div>';
+  } else if(st.canAct){
+    s += '<p class="hint" style="text-align:center;">O número máximo (20) já foi atingido. Só resta duvidar!</p>';
+  }
+  if(st.canAct){
+    s += '<button class="btn btn-doubt" onclick="doCallDoubt()">🔥 Eu Duvido!</button>';
   }
   s += '</div>';
   return s;
